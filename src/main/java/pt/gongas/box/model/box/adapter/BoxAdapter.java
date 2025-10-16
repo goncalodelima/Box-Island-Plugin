@@ -19,11 +19,17 @@ public class BoxAdapter implements DatabaseAdapter<Box> {
         UUID ownerUuid = UUIDConverter.convert((byte[]) query.get("ownerUuid"));
         String boxName = (String) query.get("boxName");
         String ownerName = (String) query.get("ownerName");
-        String centerLocationString = (String) query.get("centerLocation");
-        BoxLocation centerLocation = centerLocationString != null ? BoxLocation.deserialize(centerLocationString) : null;
         int level = (int) query.get("level");
         String firstTime = (String) query.get("firstTime");
         String lastTime = (String) query.get("lastTime");
+
+        BoxLocation centerLocation;
+
+        try {
+            centerLocation = BoxLocation.deserialize((String) query.get("centerLocation"));
+        } catch (IllegalArgumentException e) {
+            centerLocation = null;
+        }
 
         BoxLevel boxLevel = BoxPlugin.boxLevelService.get(level);
 
