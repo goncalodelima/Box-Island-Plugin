@@ -13,7 +13,7 @@ public record BoxData(
 ) {
 
     /**
-     * Merge this BoxData with another, preferring non-null (or non-zero) values from the other BoxData.
+     * Merge this BoxData with another, preferring non-null values from the other BoxData.
      */
     public BoxData merge(BoxData other) {
         if (other == null) return this;
