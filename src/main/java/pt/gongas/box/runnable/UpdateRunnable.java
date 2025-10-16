@@ -1,27 +1,31 @@
 package pt.gongas.box.runnable;
 
-import org.bukkit.scheduler.BukkitRunnable;
-import pt.gongas.box.BoxPlugin;
 import pt.gongas.box.model.box.Box;
 import pt.gongas.box.model.box.BoxData;
 import pt.gongas.box.model.box.service.BoxFoundationService;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-public class UpdateRunnable extends BukkitRunnable {
-
-    private final BoxPlugin plugin;
+public class UpdateRunnable {
 
     private final BoxFoundationService boxService;
 
-    public UpdateRunnable(BoxPlugin plugin, BoxFoundationService boxService) {
-        this.plugin = plugin;
+    private final ScheduledExecutorService executor;
+
+    public UpdateRunnable(BoxFoundationService boxService, ScheduledExecutorService executor) {
         this.boxService = boxService;
+        this.executor = executor;
     }
 
-    @Override
-    public void run() {
+    public void start() {
+        executor.scheduleAtFixedRate(this::run, 36, 36, TimeUnit.SECONDS);
+    }
+
+    private void run() {
 
         Map<Box, BoxData> boxes = new HashMap<>(boxService.getPendingUpdates());
 

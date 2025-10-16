@@ -40,6 +40,7 @@ import pt.gongas.box.model.level.service.BoxLevelService;
 import pt.gongas.box.model.box.service.BoxFoundationService;
 import pt.gongas.box.model.box.service.BoxService;
 import pt.gongas.box.runnable.BoxRunnable;
+import pt.gongas.box.runnable.UpdateRunnable;
 import pt.gongas.box.util.BukkitMainThreadExecutor;
 import pt.gongas.box.util.Formatter;
 import pt.gongas.box.util.config.Configuration;
@@ -52,6 +53,7 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class BoxPlugin extends JavaPlugin {
@@ -122,6 +124,8 @@ public class BoxPlugin extends JavaPlugin {
 
     private ExecutorService databaseExecutor;
 
+    private ScheduledExecutorService updateExecutor;
+
     private DateFormat dateFormat;
 
     public static BoxPlugin plugin;
@@ -171,6 +175,7 @@ public class BoxPlugin extends JavaPlugin {
         bukkitMainThreadExecutor = new BukkitMainThreadExecutor(this);
         worldExecutor = Executors.newFixedThreadPool(4);
         databaseExecutor = Executors.newCachedThreadPool();
+        updateExecutor = Executors.newSingleThreadScheduledExecutor();
 
         boxWorld = Bukkit.getWorld("world");
 
@@ -206,6 +211,7 @@ public class BoxPlugin extends JavaPlugin {
         new RedirectManager(servers).setup();
 
         new BoxRunnable(this).runTaskTimer(this, 20 * 60, 20 * 60);
+        new UpdateRunnable(boxService, updateExecutor).start();
 
         register();
 
@@ -259,6 +265,10 @@ public class BoxPlugin extends JavaPlugin {
 
             } catch (IllegalArgumentException | UnknownWorldException | IOException ignored) {}
 
+        }
+
+        if (!updateExecutor.isShutdown()) {
+            updateExecutor.shutdown();
         }
 
         databaseExecutor.shutdown();
