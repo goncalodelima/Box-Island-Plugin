@@ -1,0 +1,12 @@
+server-id: "box1"
+
+servers:
+  - box1
+
+database:
+  host: "localhost"
+  port: 3306
+  database: "smp"
+  username: "root"
+  password: "kingdxvi"
+  file: ""

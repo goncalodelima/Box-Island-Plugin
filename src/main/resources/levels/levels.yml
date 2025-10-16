@@ -1,0 +1,20 @@
+0:
+  level: 0
+  size: 16
+  money: 0
+1:
+  level: 1
+  size: 22
+  money: 2500
+2:
+  level: 2
+  size: 26
+  money: 7500
+3:
+  level: 3
+  size: 32
+  money: 20000
+4:
+  level: 4
+  size: 36
+  money: 35000
