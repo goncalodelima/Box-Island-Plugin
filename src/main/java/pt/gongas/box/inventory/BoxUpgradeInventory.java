@@ -286,7 +286,7 @@ public class BoxUpgradeInventory {
             BoxPlugin.economy.withdrawPlayer(player, money);
 
             box.setBoxLevel(newBoxLevel);
-            boxService.getPendingUpdates().merge(box, BoxData.withBoxLevel(newBoxLevel), BoxData::merge);
+            boxService.getPendingUpdates().merge(box, BoxData.withLevel(i), BoxData::merge);
 
             SlimeWorldInstance slimeWorldInstance = BoxPlugin.advancedSlimePaperAPI.getLoadedWorld(player.getUniqueId().toString());
 

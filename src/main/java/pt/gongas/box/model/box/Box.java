@@ -1,6 +1,8 @@
 package pt.gongas.box.model.box;
 
+import io.papermc.paper.threadedregions.scheduler.AsyncScheduler;
 import org.bukkit.Bukkit;
+import org.bukkit.World;
 import pt.gongas.box.BoxPlugin;
 import pt.gongas.box.model.level.BoxLevel;
 import pt.gongas.box.util.BoxLocation;
@@ -24,6 +26,7 @@ public class Box {
     private final Map<Integer, UUID> playerUuidByPosition = new HashMap<>();
     private final Deque<Integer> freePositions = new ArrayDeque<>();
     private int nextPosition = 0;
+    private World world;
 
     public Box(UUID ownerUuid, String ownerName, BoxLevel boxLevel, String firstTime, String lastTime) {
         this.boxUuid = UUID.randomUUID();
@@ -126,6 +129,23 @@ public class Box {
         this.lastTime = lastTime;
     }
 
+    public World getWorld() {
+        return world;
+    }
+
+    public void setWorld(World world) {
+        this.world = world;
+    }
+
+    public void addPlayer(UUID playerUuid, String name, int pos) {
+        positionByPlayerUuid.put(playerUuid, pos);
+        playerUuidByPosition.put(pos, playerUuid);
+        playerNameByLowercaseName.put(name.toLowerCase(), name);
+        playerNameByUuid.put(playerUuid, name);
+        uuidByPlayerName.put(name, playerUuid);
+        Bukkit.getAsyncScheduler().runNow(BoxPlugin.plugin, (task) -> BoxPlugin.boxListByPlayerUuid.put(playerUuid, new Object[]{boxUuid, ownerUuid, ownerName, boxLevel.level(), playerNameByUuid.size() + 1, firstTime, lastTime}));
+    }
+
     public void addPlayer(UUID playerUuid, String name) {
         int pos = getNextPosition();
         positionByPlayerUuid.put(playerUuid, pos);
@@ -133,9 +153,7 @@ public class Box {
         playerNameByLowercaseName.put(name.toLowerCase(), name);
         playerNameByUuid.put(playerUuid, name);
         uuidByPlayerName.put(name, playerUuid);
-        Bukkit.getScheduler().runTaskAsynchronously(BoxPlugin.plugin, () -> {
-            BoxPlugin.boxListByPlayerUuid.put(playerUuid, new Object[]{boxUuid, ownerUuid, ownerName, boxLevel.size(), playerNameByUuid.size() + 1, firstTime, lastTime});
-        });
+        Bukkit.getAsyncScheduler().runNow(BoxPlugin.plugin, (task) -> BoxPlugin.boxListByPlayerUuid.put(playerUuid, new Object[]{boxUuid, ownerUuid, ownerName, boxLevel.level(), playerNameByUuid.size() + 1, firstTime, lastTime}));
     }
 
     public void removePlayer(UUID playerUuid) {
@@ -148,7 +166,7 @@ public class Box {
             uuidByPlayerName.remove(realName);
             playerNameByLowercaseName.remove(realName.toLowerCase());
             playerUuidByPosition.remove(pos);
-            Bukkit.getScheduler().runTaskAsynchronously(BoxPlugin.plugin, () -> BoxPlugin.boxListByPlayerUuid.remove(playerUuid, boxUuid));
+            Bukkit.getAsyncScheduler().runNow(BoxPlugin.plugin, task -> BoxPlugin.boxListByPlayerUuid.remove(playerUuid, boxUuid));
         }
 
     }

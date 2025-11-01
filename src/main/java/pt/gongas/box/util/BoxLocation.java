@@ -1,9 +1,9 @@
 package pt.gongas.box.util;
 
-public record BoxLocation(double x, double y, double z) {
+public record BoxLocation(double x, double y, double z, float yaw, float pitch) {
 
     public String serialize() {
-        return x + "," + y + "," + z;
+        return x + "," + y + "," + z + "," + yaw + "," + pitch;
     }
 
     public static String serialize(BoxLocation location) {
@@ -12,7 +12,7 @@ public record BoxLocation(double x, double y, double z) {
             return null;
         }
 
-        return location.x() + "," + location.y() + "," + location.z();
+        return location.x() + "," + location.y() + "," + location.z() + "," + location.yaw + "," + location.pitch;
     }
 
     public static BoxLocation deserialize(String data) throws IllegalArgumentException {
@@ -23,7 +23,7 @@ public record BoxLocation(double x, double y, double z) {
 
         String[] parts = data.split(",");
 
-        if (parts.length != 3) {
+        if (parts.length != 5) {
             throw new IllegalArgumentException("Invalid data format: expected 3 values");
         }
 
@@ -31,7 +31,9 @@ public record BoxLocation(double x, double y, double z) {
             double x = Double.parseDouble(parts[0]);
             double y = Double.parseDouble(parts[1]);
             double z = Double.parseDouble(parts[2]);
-            return new BoxLocation(x, y, z);
+            float yaw = Float.parseFloat(parts[3]);
+            float pitch = Float.parseFloat(parts[4]);
+            return new BoxLocation(x, y, z, yaw, pitch);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid number format", e);
         }

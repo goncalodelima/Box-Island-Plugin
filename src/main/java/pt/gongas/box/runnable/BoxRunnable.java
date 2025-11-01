@@ -44,7 +44,7 @@ public class BoxRunnable extends BukkitRunnable {
             if (!Bukkit.unloadWorld(world, true)) {
                 plugin.getLogger().log(Level.INFO, "The world was not unloaded successfully for some reason. BoxRunnable#tryDelete call failed");
             } else {
-                BoxLoader.removePlayerWorld(uuid);
+                BoxLoader.removeBoxServer(uuid);
             }
 
         } else {

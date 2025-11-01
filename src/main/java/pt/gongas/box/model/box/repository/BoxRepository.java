@@ -10,7 +10,7 @@ import pt.gongas.box.util.BoxLocation;
 import pt.gongas.box.util.Result;
 import pt.gongas.box.util.UUIDConverter;
 
-import java.util.Collection;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -32,6 +32,7 @@ public class BoxRepository implements BoxFoundationRepository {
     @Override
     public void setup() {
         try (DatabaseExecutor executor = database.execute()) {
+
             executor
                     .query("""
                                 CREATE TABLE IF NOT EXISTS box (
@@ -46,6 +47,18 @@ public class BoxRepository implements BoxFoundationRepository {
                                 )
                             """)
                     .write();
+
+            executor.query("""
+                    CREATE TABLE IF NOT EXISTS box_members (
+                        boxUuid BINARY(16),
+                        memberUuid BINARY(16),
+                        memberName VARCHAR(32),
+                        position INT,
+                        PRIMARY KEY (boxUuid, memberUuid),
+                        FOREIGN KEY (boxUuid) REFERENCES box(boxUuid) ON DELETE CASCADE
+                    )
+                    """).write();
+
         }
     }
 
@@ -151,10 +164,28 @@ public class BoxRepository implements BoxFoundationRepository {
 
             try (DatabaseExecutor executor = database.execute()) {
 
+                byte[] bytes = UUIDConverter.convert(boxUuid);
+
                 Box box = executor
                         .query("SELECT * FROM box WHERE boxUuid = ?")
-                        .readOne(statement -> statement.set(1, UUIDConverter.convert(boxUuid)), adapter)
+                        .readOne(statement -> statement.set(1, bytes), adapter)
                         .orElse(null);
+
+                if (box != null) {
+
+                    executor
+                            .query("SELECT * FROM box_members WHERE boxUuid = ?")
+                            .readMany(statement -> statement.set(1, bytes), query -> {
+
+                                UUID memberUuid = UUIDConverter.convert((byte[]) query.get("memberUuid"));
+                                String memberName = (String) query.get("memberName");
+                                int position = (int) query.get("position");
+
+                                box.addPlayer(memberUuid, memberName, position);
+                                return null;
+                            }, ArrayList::new);
+
+                }
 
                 return Result.ok(box);
             }
@@ -190,7 +221,7 @@ public class BoxRepository implements BoxFoundationRepository {
                         statement.set(3, data.boxName());
                         statement.set(4, data.ownerName());
                         statement.set(5, data.centerLocation());
-                        statement.set(6, data.boxLevel().level());
+                        statement.set(6, data.level());
                         statement.set(7, data.firstTime());
                         statement.set(8, data.lastTime());
                     });
@@ -202,6 +233,50 @@ public class BoxRepository implements BoxFoundationRepository {
         }
 
     }
+
+    @Override
+    public CompletableFuture<Boolean> addMember(Box box, UUID memberUuid, String memberName, int position) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (DatabaseExecutor executor = database.execute()) {
+                executor.query("""
+                        INSERT INTO box_members (boxUuid, memberUuid, memberName, position)
+                        VALUES (?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            memberName = VALUES(memberName),
+                            position = VALUES(position)
+                        """).write(statement -> {
+                    statement.set(1, UUIDConverter.convert(box.getBoxUuid()));
+                    statement.set(2, UUIDConverter.convert(memberUuid));
+                    statement.set(3, memberName);
+                    statement.set(4, position);
+                });
+
+                return true;
+            }
+        }, plugin.getDatabaseExecutor()).exceptionally(e -> {
+            plugin.getLogger().log(Level.SEVERE, "Failed to add box member to database", e);
+            return false;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> removeMember(Box box, UUID memberUuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (DatabaseExecutor executor = database.execute()) {
+                executor.query("DELETE FROM box_members WHERE boxUuid = ? AND memberUuid = ?")
+                        .write(statement -> {
+                            statement.set(1, UUIDConverter.convert(box.getBoxUuid()));
+                            statement.set(2, UUIDConverter.convert(memberUuid));
+                        });
+
+                return true;
+            }
+        }, plugin.getDatabaseExecutor()).exceptionally(e -> {
+            plugin.getLogger().log(Level.SEVERE, "Failed to remove box member from database", e);
+            return false;
+        });
+    }
+
 
     @Override
     public int getBoxCount() {

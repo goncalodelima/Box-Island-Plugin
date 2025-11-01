@@ -20,6 +20,10 @@ public interface BoxFoundationRepository {
 
     boolean update(Map<Box, BoxData> boxes);
 
+    CompletableFuture<Boolean> addMember(Box box, UUID memberUuid, String memberName, int position);
+
+    CompletableFuture<Boolean> removeMember(Box box, UUID memberUuid);
+
     int getBoxCount();
 
 }

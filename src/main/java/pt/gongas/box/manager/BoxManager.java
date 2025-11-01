@@ -17,6 +17,7 @@ import pt.gongas.box.util.config.Configuration;
 
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 public class BoxManager {
 
@@ -52,7 +53,7 @@ public class BoxManager {
     public void sethome(Box box, Player player) {
 
         Location location = player.getLocation();
-        BoxLocation boxLocation = new BoxLocation(location.getX(), location.getY(), location.getZ());
+        BoxLocation boxLocation = new BoxLocation(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
 
         box.setCenterBoxLocation(boxLocation);
         boxService.getPendingUpdates().merge(box, BoxData.withCenterLocation(boxLocation.serialize()), BoxData::merge);
@@ -105,28 +106,22 @@ public class BoxManager {
                     return;
                 }
 
-                new BukkitRunnable() {
-                    @Override
-                    public void run() {
-                        BoxPlugin.boxUuidToInvitations.put(box.getBoxUuid(), uuid);
-                        BoxPlugin.boxEvents.publish("receivedInvite;" + uuid + ";" + player.getName());
+                Bukkit.getAsyncScheduler().runNow(plugin, task -> {
+                    BoxPlugin.boxUuidToInvitations.put(box.getBoxUuid(), uuid);
+                    BoxPlugin.boxEvents.publish("receivedInvite;" + uuid + ";" + player.getName());
+                });
+
+                Bukkit.getAsyncScheduler().runDelayed(plugin, task -> {
+
+                    Set<UUID> current = BoxPlugin.boxUuidToInvitations.get(box.getBoxUuid());
+
+                    current.remove(uuid);
+
+                    if (current.isEmpty()) {
+                        BoxPlugin.boxUuidToInvitations.removeAll(box.getBoxUuid());
                     }
-                }.runTaskAsynchronously(plugin);
 
-                new BukkitRunnable() {
-                    @Override
-                    public void run() {
-
-                        Set<UUID> current = BoxPlugin.boxUuidToInvitations.get(box.getBoxUuid());
-
-                        current.remove(uuid);
-
-                        if (current.isEmpty()) {
-                            BoxPlugin.boxUuidToInvitations.removeAll(box.getBoxUuid());
-                        }
-
-                    }
-                }.runTaskLaterAsynchronously(plugin, 20 * 60);
+                }, 60, TimeUnit.SECONDS);
 
                 player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("invite", "<green>You have successfully invited player <white>%target%<green>.")).replaceText(TextReplacementConfig.builder().matchLiteral("%target%").replacement(name).build()));
                 player.playSound(player, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
@@ -143,78 +138,71 @@ public class BoxManager {
             return;
         }
 
-        new BukkitRunnable() {
-            @Override
-            public void run() {
+        UUID playerUuid = player.getUniqueId();
 
-                String uuidString = BoxPlugin.nameToUuid.get(target.toLowerCase());
+        Bukkit.getAsyncScheduler().runNow(plugin, task -> {
 
-                if (uuidString == null) {
-                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("player-offline-all-network", "<red>The inserted player is not online across our network.")));
-                    return;
-                }
+            String uuidString = BoxPlugin.nameToUuid.get(target.toLowerCase());
 
-                String name = BoxPlugin.uuidToName.get(uuidString);
+            if (uuidString == null) {
+                player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("player-offline-all-network", "<red>The inserted player is not online across our network.")));
+                return;
+            }
 
-                if (name == null) {
-                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("player-offline-all-network", "<red>The inserted player is not online across our network.")));
-                    return;
-                }
+            String name = BoxPlugin.uuidToName.get(uuidString);
 
-                UUID uuid = UUID.fromString(uuidString);
+            if (name == null) {
+                player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("player-offline-all-network", "<red>The inserted player is not online across our network.")));
+                return;
+            }
 
-                if (player.getUniqueId().equals(uuid)) { // Is it redundant?
-                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("invite-yourself", "<red>You can't invite yourself")));
-                    return;
-                }
+            UUID uuid = UUID.fromString(uuidString);
 
-                Set<UUID> pendingInvites = BoxPlugin.boxUuidToInvitations.get(box.getBoxUuid());
+            if (playerUuid.equals(uuid)) { // Is it redundant?
+                player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("invite-yourself", "<red>You can't invite yourself")));
+                return;
+            }
 
-                if (pendingInvites.contains(uuid)) {
-                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("already-invited", "<red>You've already invited this player! Wait for him to accept the invitation.")));
-                    return;
-                }
+            Set<UUID> pendingInvites = BoxPlugin.boxUuidToInvitations.get(box.getBoxUuid());
 
-                new BukkitRunnable() {
-                    @Override
-                    public void run() {
+            if (pendingInvites.contains(uuid)) {
+                player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("already-invited", "<red>You've already invited this player! Wait for him to accept the invitation.")));
+                return;
+            }
 
-                        if (box.getPlayerNameByUuid().containsKey(uuid)) {
-                            player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("already-friend", "<red>The inserted player is already added to your box.")));
-                            return;
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+
+                    if (box.getPlayerNameByUuid().containsKey(uuid)) {
+                        player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("already-friend", "<red>The inserted player is already added to your box.")));
+                        return;
+                    }
+
+                    Bukkit.getAsyncScheduler().runNow(plugin, task -> {
+                        BoxPlugin.boxUuidToInvitations.put(box.getBoxUuid(), uuid);
+                        BoxPlugin.boxEvents.publish("receivedInvite;" + uuid + ";" + player.getName());
+                    });
+
+                    Bukkit.getAsyncScheduler().runDelayed(plugin, task -> {
+
+                        Set<UUID> current = BoxPlugin.boxUuidToInvitations.get(box.getBoxUuid());
+
+                        current.remove(uuid);
+
+                        if (current.isEmpty()) {
+                            BoxPlugin.boxUuidToInvitations.removeAll(box.getBoxUuid());
                         }
 
-                        new BukkitRunnable() {
-                            @Override
-                            public void run() {
-                                BoxPlugin.boxUuidToInvitations.put(box.getBoxUuid(), uuid);
-                                BoxPlugin.boxEvents.publish("receivedInvite;" + uuid + ";" + player.getName());
-                            }
-                        }.runTaskAsynchronously(plugin);
+                    }, 60, TimeUnit.SECONDS);
 
-                        new BukkitRunnable() {
-                            @Override
-                            public void run() {
+                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("invite", "<green>You have successfully invited player <white>%target%<green>.")).replaceText(TextReplacementConfig.builder().matchLiteral("%target%").replacement(name).build()));
+                    player.playSound(player, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
 
-                                Set<UUID> current = BoxPlugin.boxUuidToInvitations.get(box.getBoxUuid());
+                }
+            }.runTask(plugin);
 
-                                current.remove(uuid);
-
-                                if (current.isEmpty()) {
-                                    BoxPlugin.boxUuidToInvitations.removeAll(box.getBoxUuid());
-                                }
-
-                            }
-                        }.runTaskLaterAsynchronously(plugin, 20 * 60);
-
-                        player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("invite", "<green>You have successfully invited player <white>%target%<green>.")).replaceText(TextReplacementConfig.builder().matchLiteral("%target%").replacement(name).build()));
-                        player.playSound(player, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-
-                    }
-                }.runTask(plugin);
-
-            }
-        }.runTaskAsynchronously(plugin);
+        });
 
     }
 
@@ -227,8 +215,10 @@ public class BoxManager {
             return;
         }
 
-        UUID uuid = box.removePlayer(realName);
-        // add pending updates
+        UUID uuid = box.getUuidByPlayerName().get(realName);
+
+        box.removePlayer(uuid);
+        attemptRemoveMember(box, uuid);
 
         player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("friend-remove", "<green>You have successfully removed player '<white>%target%<green>'.")).replaceText(TextReplacementConfig.builder().matchLiteral("%target%").replacement(realName).build()));
         player.playSound(player, Sound.ENTITY_PLAYER_LEVELUP, 1, 1);
@@ -241,8 +231,32 @@ public class BoxManager {
             targetPlayer.playSound(targetPlayer, Sound.ENTITY_VILLAGER_NO, 1, 1);
 
         } else {
-           Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> BoxPlugin.boxEvents.publish("friendRemoval;" + uuid + ";" + player.getName()));
+            Bukkit.getAsyncScheduler().runNow(plugin, task -> BoxPlugin.boxEvents.publish("friendRemoval;" + uuid + ";" + player.getName()));
         }
+
+    }
+
+    public void attemptInviteMember(Box box, UUID playerUuid, String playerName) {
+
+        boxService.addMember(box, playerUuid, playerName, box.getNextPosition()).thenAcceptAsync(success -> {
+
+            if (!success) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> attemptInviteMember(box, playerUuid, playerName), 20 * 10);
+            }
+
+        }, plugin.getBukkitMainThreadExecutor());
+
+    }
+
+    public void attemptRemoveMember(Box box, UUID playerUuid) {
+
+        boxService.removeMember(box, playerUuid).thenAcceptAsync(success -> {
+
+            if (!success) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> attemptRemoveMember(box, playerUuid), 20 * 10);
+            }
+
+        }, plugin.getBukkitMainThreadExecutor());
 
     }
 

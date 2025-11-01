@@ -48,7 +48,7 @@ group = "pt.gongas"
 version = "1.0.0"
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
     compileOnly(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
     compileOnly("net.kyori:adventure-text-minimessage:4.24.0")
     implementation("dev.triumphteam:triumph-gui-paper:3.1.13-SNAPSHOT")
@@ -56,7 +56,7 @@ dependencies {
     //compileOnly("com.github.decentsoftware-eu:decentholograms:2.9.6")
     //compileOnly("de.tr7zw:item-nbt-api-plugin:2.15.1")
     //compileOnly("io.lumine:Mythic-Dist:5.9.5")
-    compileOnly("com.github.MilkBowl:VaultAPI:1.7")
+    compileOnly("com.github.MilkBowl:VaultAPI:1.7.1")
     compileOnly("com.infernalsuite.asp:api:4.0.0-SNAPSHOT")
     implementation("com.infernalsuite.asp:file-loader:4.0.0-SNAPSHOT")
 }

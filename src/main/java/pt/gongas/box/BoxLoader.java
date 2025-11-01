@@ -1,24 +1,16 @@
 package pt.gongas.box;
 
+import java.util.List;
 import java.util.UUID;
 
 public class BoxLoader {
 
-    public static boolean isPlayerWorldLoaded(UUID playerUuid) {
-        return BoxPlugin.playerServer.containsKey(playerUuid);
-    }
-
-    public static void addPlayerWorld(UUID playerUuid) {
-        BoxPlugin.playerServer.put(playerUuid, BoxPlugin.serverId);
+    public static void addPlayerWorld() {
         BoxPlugin.worldCount.addAndGet(BoxPlugin.serverId, 1);
     }
 
-    public static void removePlayerWorld(UUID playerUuid) {
-        BoxPlugin.playerServer.remove(playerUuid);
-    }
-
-    public static String getPlayerServer(UUID playerUuid) {
-        return BoxPlugin.playerServer.get(playerUuid);
+    public static void removeBoxServer(UUID uuid) {
+        BoxPlugin.boxServers.remove(uuid);
     }
 
     public static String getBoxServer(UUID boxUuid) {
@@ -32,7 +24,18 @@ public class BoxLoader {
 
         for (String serverId : BoxPlugin.plugin.getServers()) {
 
-            int count =  BoxPlugin.worldCount.getOrDefault(serverId, 0);
+            int worldCount = BoxPlugin.worldCount.getOrDefault(serverId, 0);
+            int reservedCount = 0;
+
+            for (String server : BoxPlugin.serverReservations.values()) {
+
+                if (serverId.equals(server)) {
+                    reservedCount++;
+                }
+
+            }
+
+            int count = worldCount + reservedCount;
 
             if (count < minWorlds && count < 50) {
                 minWorlds = count;

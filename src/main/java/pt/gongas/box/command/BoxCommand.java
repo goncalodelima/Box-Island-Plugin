@@ -5,6 +5,7 @@ import co.aikar.commands.CommandHelp;
 import co.aikar.commands.annotation.*;
 import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -68,15 +69,12 @@ public class BoxCommand extends BaseCommand {
 
         if (box == null) {
 
-            new BukkitRunnable() {
-                @Override
-                public void run() {
+            Bukkit.getAsyncScheduler().runNow(plugin, task -> {
 
-                    UUID boxUuid = BoxPlugin.ownerToBox.get(playerUuid);
-                    BoxPlugin.boxServers.get(boxUuid);
+                UUID boxUuid = BoxPlugin.ownerToBox.get(playerUuid);
+                BoxPlugin.boxServers.get(boxUuid);
 
-                }
-            }.runTaskAsynchronously(plugin);
+            });
 
             player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("wait", "<red>Wait...")));
             return;

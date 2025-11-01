@@ -10,16 +10,15 @@ import com.minecraftsolutions.database.Database;
 import com.minecraftsolutions.database.DatabaseType;
 import com.minecraftsolutions.database.connection.DatabaseConnection;
 import com.minecraftsolutions.database.credentials.impl.DatabaseCredentialsImpl;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.redisson.api.RMap;
-import org.redisson.api.RMapCache;
-import org.redisson.api.RSetMultimap;
-import org.redisson.api.RTopic;
+import org.redisson.api.*;
 import org.redisson.client.codec.StringCodec;
 import pt.gongas.box.command.BoxCommand;
 import pt.gongas.box.command.BoxFriendAcceptCommand;
@@ -33,6 +32,7 @@ import pt.gongas.box.listener.PlayerListener;
 import pt.gongas.box.loadbalancing.redirect.RedirectManager;
 import pt.gongas.box.manager.BoxManager;
 import pt.gongas.box.model.box.Box;
+import pt.gongas.box.model.box.BoxData;
 import pt.gongas.box.model.level.BoxLevel;
 import pt.gongas.box.model.level.loader.BoxLevelLoader;
 import pt.gongas.box.model.level.service.BoxLevelFoundationService;
@@ -94,27 +94,25 @@ public class BoxPlugin extends JavaPlugin {
 
     public static Formatter formatter;
 
-    public static RMap<UUID, String> playerServer;
+    public static RMap<String, Integer> worldCount; // put/remove on the Box server instance
 
-    public static RMap<String, Integer> worldCount;
+    public static RMap<UUID, UUID> ownerToBox; // put/remove on the Box server instance
 
-    public static RMap<UUID, UUID> ownerToBox;
+    public static RMap<UUID, UUID> boxToOwner; // put/remove on the Box server instance
 
-    public static RMap<UUID, UUID> boxToOwner;
+    public static RMap<UUID, String> boxServers; // put/remove on the Box server instance
 
-    public static RMap<UUID, String> boxServers;
+    public static RMapCache<UUID, UUID> boxUuidByPlayerUuid; // put/remove on the Box server instance
 
-    public static RMapCache<UUID, UUID> boxUuidByPlayerUuid;
+    public static RMapCache<UUID, String> serverReservations; // put/remove on the Box server instance but cleans automatically
 
-    public static RMapCache<UUID, String> serverReservations;
+    public static RMap<String, String> nameToUuid; // put/remove on VelocityRedisBridge
 
-    public static RMap<String, String> nameToUuid;
+    public static RMap<String, String> uuidToName; // put/remove on VelocityRedisBridge
 
-    public static RMap<String, String> uuidToName;
+    public static RSetMultimap<UUID, UUID> boxUuidToInvitations; // put/remove on the Box server instance
 
-    public static RSetMultimap<UUID, UUID> boxUuidToInvitations;
-
-    public static RSetMultimap<UUID, Object[]> boxListByPlayerUuid;
+    public static RSetMultimap<UUID, Object[]> boxListByPlayerUuid; // put/remove on the Box server instance
 
     public static RTopic boxEvents;
 
@@ -159,7 +157,6 @@ public class BoxPlugin extends JavaPlugin {
         servers = getConfig().getStringList("servers");
         dateFormat = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 
-        playerServer = RedisManager.getClient().getMap("server:player-server", StringCodec.INSTANCE);
         worldCount = RedisManager.getClient().getMap("server:world-count");
         ownerToBox = RedisManager.getClient().getMap("server:owner-box");
         boxToOwner = RedisManager.getClient().getMap("server:box-owner");
@@ -219,7 +216,58 @@ public class BoxPlugin extends JavaPlugin {
 
             String[] parts = o.split(";");
 
-            if (parts[0].equals("acceptInvite")) {
+            if (parts[0].equals("createBox")) {
+
+                UUID playerUuid = UUID.fromString(parts[1]);
+                String playerName = parts[2];
+
+                RFuture<String> reservedServer = BoxPlugin.serverReservations.getAsync(playerUuid);
+
+                reservedServer.thenAcceptAsync(value -> {
+
+                    if (BoxPlugin.serverId.equals(value)) {
+
+                        boxService.createBox(playerUuid, playerName, playerUuid, playerUuid, false).thenAccept(box -> {
+
+                            if (box != null) {
+                                BoxLoader.addPlayerWorld(); // this executes before serverReservations timeout in 99% of cases
+                                boxEvents.publishAsync("boxCreated;success;" + serverId + ";" + playerUuid);
+                            } else {
+                                boxEvents.publishAsync("boxCreated;fail;" + serverId + ";" + playerUuid);
+                            }
+
+                        });
+
+                    } else {
+
+                        UUID boxUuid = BoxPlugin.boxUuidByPlayerUuid.get(playerUuid);
+
+                        if (boxUuid == null) {
+                            return;
+                        }
+
+                        UUID ownerUuid = BoxPlugin.boxToOwner.get(boxUuid);
+
+                        if (ownerUuid == null) {
+                            return;
+                        }
+
+                        boxService.createBox(playerUuid, playerName, boxUuid, ownerUuid, true).thenAccept(box -> {
+
+                            if (box != null) {
+                                BoxLoader.addPlayerWorld(); // this executes before serverReservations timeout in 99% of cases
+                                boxEvents.publishAsync("boxCreated;success;" + serverId + ";" + playerUuid);
+                            } else {
+                                boxEvents.publishAsync("boxCreated;fail;" + serverId + ";" + playerUuid);
+                            }
+
+                        });
+
+                    }
+
+                });
+
+            } else if (parts[0].equals("acceptInvite")) {
 
                 UUID boxUuid = UUID.fromString(parts[1]);
 
@@ -235,7 +283,7 @@ public class BoxPlugin extends JavaPlugin {
                             String name = parts[3];
 
                             box.addPlayer(playerUuid, name);
-                            // add pending updates
+                            boxManager.attemptInviteMember(box, playerUuid, name);
 
                             boxEvents.publish("validInvite;" + playerUuid + ";" + parts[4]);
 
@@ -267,8 +315,27 @@ public class BoxPlugin extends JavaPlugin {
 
         }
 
-        if (!updateExecutor.isShutdown()) {
-            updateExecutor.shutdown();
+        clearRedis();
+
+        try {
+            // Wait for currently executing tasks to finish
+            if (!updateExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                // Force shutdown if tasks are not finished in the given time
+                updateExecutor.shutdownNow();
+                // Wait for tasks to respond to being cancelled
+                if (!updateExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    System.err.println("Update Executor did not terminate in the specified time.");
+                }
+            }
+        } catch (InterruptedException ie) {
+            // (Re-)Cancel if current thread also interrupted
+            updateExecutor.shutdownNow();
+        }
+
+        Map<Box, BoxData> boxes = boxService.getPendingUpdates();
+
+        if (!boxes.isEmpty()) {
+            boxService.update(boxes);
         }
 
         databaseExecutor.shutdown();
@@ -280,7 +347,7 @@ public class BoxPlugin extends JavaPlugin {
                 databaseExecutor.shutdownNow();
                 // Wait for tasks to respond to being cancelled
                 if (!databaseExecutor.awaitTermination(36, TimeUnit.SECONDS)) {
-                    System.err.println("Executor did not terminate in the specified time.");
+                    System.err.println("Database Executor did not terminate in the specified time.");
                 }
             }
         } catch (InterruptedException ie) {
@@ -309,6 +376,45 @@ public class BoxPlugin extends JavaPlugin {
 
     }
 
+    private void clearRedis() {
+
+        worldCount.fastRemove(serverId);
+
+        Collection<? extends Player> players = Bukkit.getOnlinePlayers();
+        int size = players.size();
+
+        if (size != 0) {
+
+            UUID[] uuids = new UUID[size];
+            int i = 0;
+
+            for (Player player : players) {
+                uuids[i++] = player.getUniqueId();
+                player.kick(MiniMessage.miniMessage().deserialize("<red>Server restarting"));
+            }
+
+            boxUuidByPlayerUuid.fastRemove(uuids);
+            boxListByPlayerUuid.fastRemove(uuids);
+        }
+
+        Map<UUID, Box> boxes = boxService.getAll();
+
+        if (!boxes.isEmpty()) {
+
+            Set<UUID> boxUuids = boxes.keySet();
+            UUID[] boxUuidsArray = boxUuids.toArray(UUID[]::new);
+
+            Map<UUID, UUID> ownersMap = boxToOwner.getAll(boxUuids);
+            UUID[] ownerUuids = ownersMap.values().toArray(UUID[]::new);
+
+            boxUuidToInvitations.fastRemove(boxUuidsArray);
+            ownerToBox.fastRemove(ownerUuids);
+            boxToOwner.fastRemove(boxUuidsArray);
+            boxServers.fastRemove(boxUuidsArray);
+        }
+
+    }
+
     private void register() {
         registerCommand();
         registerListener();
@@ -317,7 +423,7 @@ public class BoxPlugin extends JavaPlugin {
     public void registerCommand() {
         BukkitCommandManager commandManager = new BukkitCommandManager(this);
         commandManager.enableUnstableAPI("help");
-        commandManager.registerCommand(new BoxFriendAcceptCommand(this, boxService, lang));
+        commandManager.registerCommand(new BoxFriendAcceptCommand(this, boxManager, boxService, lang));
         commandManager.registerCommand(new BoxCommand(this, boxService, boxManager, lang, boxInventory));
         commandManager.registerCommand(new BoxUpgradeCommand(boxService, boxInventory, boxUpgradeInventory, lang));
     }
