@@ -111,16 +111,20 @@ public class PermissionListener implements Listener {
 
     }
 
-    private boolean isInsideForeignBox(Player player) {
-        UUID uuid = player.getWorld().getUID();
-        Box box = boxService.get(uuid);
-        return box == null || !box.isOwnerOrMember(uuid);
+    private boolean isInsideOwnBox(Player player) {
+
+        try {
+            UUID uuid = UUID.fromString(player.getWorld().getName());
+            Box box = boxService.get(uuid);
+            return box != null && box.isOwnerOrMember(player.getUniqueId());
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+
     }
 
-    private boolean isInsideOwnBox(Player player) {
-        UUID uuid = player.getWorld().getUID();
-        Box box = boxService.get(uuid);
-        return box != null && box.isOwnerOrMember(uuid);
+    private boolean isInsideForeignBox(Player player) {
+        return !isInsideOwnBox(player);
     }
 
 }
