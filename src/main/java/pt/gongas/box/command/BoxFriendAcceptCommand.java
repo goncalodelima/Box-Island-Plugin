@@ -5,7 +5,6 @@ import co.aikar.commands.CommandHelp;
 import co.aikar.commands.annotation.*;
 import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -47,7 +46,7 @@ public class BoxFriendAcceptCommand extends BaseCommand {
             return;
         }
 
-        Bukkit.getAsyncScheduler().runNow(plugin, task -> {
+        BoxPlugin.plugin.getRedisExecutor().submit(() -> {
 
             String uuidString = BoxPlugin.nameToUuid.get(target.toLowerCase());
 
@@ -64,19 +63,11 @@ public class BoxFriendAcceptCommand extends BaseCommand {
             }
 
             UUID ownerUuid = UUID.fromString(uuidString);
-            Box box = boxService.getBoxByOwnerUuid(ownerUuid);
+            Box box = boxService.get(ownerUuid);
 
             if (box == null) {
 
-                UUID boxUuid = BoxPlugin.ownerToBox.get(ownerUuid);
-
-                if (boxUuid == null) {
-                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("target-no-box", "<red>The inserted player no longer has a box.")));
-                    return;
-                }
-
-                Set<UUID> invitations = BoxPlugin.boxUuidToInvitations.get(boxUuid);
-
+                Set<UUID> invitations = BoxPlugin.boxUuidToInvitations.get(ownerUuid);
                 UUID playerUuid = player.getUniqueId();
 
                 if (!invitations.contains(playerUuid)) {
@@ -84,16 +75,15 @@ public class BoxFriendAcceptCommand extends BaseCommand {
                     return;
                 }
 
-                BoxPlugin.boxEvents.publish("acceptInvite;" + boxUuid + ";" + playerUuid + ";" + player.getName() + ";" + name);
+                BoxPlugin.boxEvents.publish("acceptInvite;" + ownerUuid + ";" + playerUuid + ";" + player.getName() + ";" + name);
 
                 invitations.remove(playerUuid);
 
                 if (invitations.isEmpty()) {
-                    BoxPlugin.boxUuidToInvitations.removeAll(boxUuid);
+                    BoxPlugin.boxUuidToInvitations.removeAll(ownerUuid);
                 }
 
             } else {
-
 
                 SlimeWorldInstance slimeWorldInstance = BoxPlugin.advancedSlimePaperAPI.getLoadedWorld(uuidString);
 
@@ -102,7 +92,7 @@ public class BoxFriendAcceptCommand extends BaseCommand {
                     return;
                 }
 
-                Set<UUID> invitations = BoxPlugin.boxUuidToInvitations.get(box.getBoxUuid());
+                Set<UUID> invitations = BoxPlugin.boxUuidToInvitations.get(box.getOwnerUuid());
 
                 UUID playerUuid = player.getUniqueId();
 
@@ -125,7 +115,7 @@ public class BoxFriendAcceptCommand extends BaseCommand {
                 invitations.remove(playerUuid);
 
                 if (invitations.isEmpty()) {
-                    BoxPlugin.boxUuidToInvitations.removeAll(box.getBoxUuid());
+                    BoxPlugin.boxUuidToInvitations.removeAll(box.getOwnerUuid());
                 }
 
                 player.sendMessage(MiniMessage.miniMessage().deserialize("<green>You accepted the " + name + " box invitation."));

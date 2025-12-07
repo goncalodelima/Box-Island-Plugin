@@ -26,9 +26,16 @@ public class BoxRunnable extends BukkitRunnable {
             try {
 
                 UUID uuid = UUID.fromString(world.getName());
+                World bukkitWorld = world.getBukkitWorld();
 
-                if (Bukkit.getPlayer(uuid) == null) {
-                    attemptWorldDelete(uuid, world.getBukkitWorld());
+                System.out.println("fulltime: " + bukkitWorld.getFullTime());
+
+                if (bukkitWorld.getFullTime() > BoxPlugin.UNLOAD_WORLD_COOLDOWN) {
+
+                    if (Bukkit.getPlayer(uuid) == null) {
+                        attemptWorldDelete(uuid, world.getBukkitWorld());
+                    }
+
                 }
 
             } catch (IllegalArgumentException ignored) {}
@@ -44,11 +51,31 @@ public class BoxRunnable extends BukkitRunnable {
             if (!Bukkit.unloadWorld(world, true)) {
                 plugin.getLogger().log(Level.INFO, "The world was not unloaded successfully for some reason. BoxRunnable#tryDelete call failed");
             } else {
-                BoxLoader.removeBoxServer(uuid);
+                BoxPlugin.plugin.getRedisExecutor().submit(() -> BoxLoader.removeBoxServer(uuid));
             }
 
         } else {
-            Bukkit.getScheduler().runTask(plugin, () -> attemptWorldDelete(uuid, world));
+            Bukkit.getScheduler().runTaskLater(plugin, () -> attemptWorldDeleteCallback(uuid, world), 20 * 5);
+        }
+
+    }
+
+    private void attemptWorldDeleteCallback(UUID uuid, World world) {
+
+        if (Bukkit.getPlayer(uuid) != null) {
+            return;
+        }
+
+        if (!Bukkit.isTickingWorlds()) {
+
+            if (!Bukkit.unloadWorld(world, true)) {
+                plugin.getLogger().log(Level.INFO, "The world was not unloaded successfully for some reason. BoxRunnable#tryDelete call failed");
+            } else {
+                BoxPlugin.plugin.getRedisExecutor().submit(() -> BoxLoader.removeBoxServer(uuid));
+            }
+
+        } else {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> attemptWorldDeleteCallback(uuid, world), 20 * 5);
         }
 
     }

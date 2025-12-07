@@ -163,7 +163,7 @@ public class BoxVisitInventory {
 
             for (Object[] object : boxList) {
 
-                BoxInfo boxInfo = new BoxInfo((UUID) object[0], (UUID) object[1], (String) object[2], (int) object[3], (int) object[4], (String) object[5], (String) object[6]);
+                BoxInfo boxInfo = new BoxInfo((UUID) object[0], (String) object[1], (int) object[2], (int) object[3], (String) object[4], (String) object[5]);
                 List<Component> otherLoreComponents = new ArrayList<>();
 
                 int size = boxLevelService.get(boxInfo.getLevel()).size();
@@ -197,83 +197,74 @@ public class BoxVisitInventory {
                                 .replaceText(TextReplacementConfig.builder().matchLiteral("%owner%").replacement(boxInfo.getBoxOwner()).build())
                         )
                         .lore(otherLoreComponents)
-                        .asGuiItem(click -> {
+                        .asGuiItem(click -> BoxPlugin.plugin.getRedisExecutor().submit(() -> {
 
-                            Bukkit.getAsyncScheduler().runNow(plugin, (task) -> {
+                                if (BoxPlugin.serverReservations.containsKey(boxInfo.getBoxOwnerUuid()) || BoxPlugin.boxUuidByPlayerUuid.containsKey(uuid)) {
+                                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("server-redirect-wait", "<red>Wait...")));
+                                    return;
+                                }
 
-                                    if (BoxPlugin.serverReservations.containsKey(boxInfo.getBoxUuid()) || BoxPlugin.boxUuidByPlayerUuid.containsKey(uuid)) {
-                                        player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("server-redirect-wait", "<red>Wait...")));
+                                String boxServer = BoxLoader.getBoxServer(boxInfo.getBoxOwnerUuid());
+                                String server;
+
+                                if (boxServer == null) {
+
+                                    server = BoxLoader.getServerWithLeastWorlds();
+
+                                    if (server == null) {
+                                        player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("server-redirect-full", "<red>All servers are full. ;(")));
                                         return;
                                     }
 
-                                    String boxServer = BoxLoader.getBoxServer(boxInfo.getBoxUuid());
-                                    String server;
+                                } else {
+                                    server = boxServer;
+                                }
 
-                                    if (boxServer == null) {
+                                byte[] redirect = RedirectManager.getRedirect(server);
 
-                                        server = BoxLoader.getServerWithLeastWorlds();
+                                if (redirect == null) {
+                                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("server-redirect-error", "<red>The server '%server%' no longer exists ;(")).replaceText(TextReplacementConfig.builder().matchLiteral("%server%").replacement(server).build()));
+                                    return;
+                                }
 
-                                        if (server == null) {
-                                            player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("server-redirect-full", "<red>All servers are full. ;(")));
-                                            return;
+                                BoxPlugin.serverReservations.put(boxInfo.getBoxOwnerUuid(), server, 10, TimeUnit.SECONDS);
+
+                                if (server.equals(BoxPlugin.serverId)) {
+
+                                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("box-visit", "<green>Visiting %owner%'s box...")).replaceText(TextReplacementConfig.builder().matchLiteral("%owner%").replacement(boxInfo.getBoxOwner()).build()));
+
+                                    boxService.createBox(uuid, name, boxInfo.getBoxOwnerUuid(), false).thenAcceptAsync(box1 -> {
+
+                                        if (box1 != null) {
+
+                                            BoxLoader.addAsyncPlayerWorld(); // this executes before serverReservations timeout in 99% of cases
+
+                                            BoxLocation boxLocation = box1.getCenterBoxLocation();
+                                            Location centerLocation = new Location(box1.getWorld(), boxLocation.x(), boxLocation.y(), boxLocation.z(), boxLocation.yaw(), boxLocation.pitch());
+
+                                            player.teleport(centerLocation);
+                                            player.playSound(player, Sound.ENTITY_PLAYER_TELEPORT, 1, 1);
+
+                                        } else {
+                                            player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("box-visit-error", "<red>An error occurred while trying to access this box. Please try again in a few seconds.")));
                                         }
 
-                                    } else {
-                                        server = boxServer;
-                                    }
+                                    }, Bukkit.getScheduler().getMainThreadExecutor(plugin));
 
-                                    byte[] redirect = RedirectManager.getRedirect(server);
+                                } else {
+                                    BoxPlugin.boxUuidByPlayerUuid.put(uuid, boxInfo.getBoxOwnerUuid(), 10, TimeUnit.SECONDS);
+                                    player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("server-redirect", "<green>Redirecting to '%server%'...")).replaceText(TextReplacementConfig.builder().matchLiteral("%server%").replacement(server).build()));
+                                    BoxPlugin.boxEvents.publish("createBox;" + uuid + ";" + name);
+                                }
 
-                                    if (redirect == null) {
-                                        player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("server-redirect-error", "<red>The server '%server%' no longer exists ;(")).replaceText(TextReplacementConfig.builder().matchLiteral("%server%").replacement(server).build()));
-                                        return;
-                                    }
-
-                                    BoxPlugin.serverReservations.put(boxInfo.getBoxUuid(), server, 10, TimeUnit.SECONDS);
-
-                                    if (server.equals(BoxPlugin.serverId)) {
-
-                                        player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("box-visit", "<green>Visiting %owner%'s box...")).replaceText(TextReplacementConfig.builder().matchLiteral("%owner%").replacement(boxInfo.getBoxOwner()).build()));
-
-                                        boxService.createBox(uuid, name, boxInfo.getBoxUuid(), boxInfo.getBoxOwnerUuid(), false).thenAcceptAsync(box1 -> {
-
-                                            if (box1 != null) {
-
-                                                Bukkit.getAsyncScheduler().runNow(plugin, (t) -> BoxLoader.addPlayerWorld()); // this executes before serverReservations timeout in 99% of cases
-
-                                                BoxLocation boxLocation = box1.getCenterBoxLocation();
-                                                Location centerLocation = new Location(box1.getWorld(), boxLocation.x(), boxLocation.y(), boxLocation.z(), boxLocation.yaw(), boxLocation.pitch());
-
-                                                player.teleport(centerLocation);
-                                                player.playSound(player, Sound.ENTITY_PLAYER_TELEPORT, 1, 1);
-
-                                            } else {
-                                                player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("box-visit-error", "<red>An error occurred while trying to access this box. Please try again in a few seconds.")));
-                                            }
-
-                                        }, plugin.getBukkitMainThreadExecutor());
-
-                                    } else {
-
-                                        BoxPlugin.boxUuidByPlayerUuid.put(uuid, boxInfo.getBoxUuid(), 10, TimeUnit.SECONDS);
-                                        BoxPlugin.ownerToBox.put(boxInfo.getBoxOwnerUuid(), boxInfo.getBoxUuid());
-                                        BoxPlugin.boxToOwner.put(boxInfo.getBoxUuid(), boxInfo.getBoxOwnerUuid());
-
-                                        player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("server-redirect", "<green>Redirecting to '%server%'...")).replaceText(TextReplacementConfig.builder().matchLiteral("%server%").replacement(server).build()));
-                                        BoxPlugin.boxEvents.publishAsync("createBox;" + uuid + ";" + name);
-
-                                    }
-
-                            });
-
-                        }));
+                        })));
 
                 i++;
             }
 
             gui.open(player);
 
-        }, plugin.getBukkitMainThreadExecutor());
+        }, Bukkit.getScheduler().getMainThreadExecutor(plugin));
 
     }
 

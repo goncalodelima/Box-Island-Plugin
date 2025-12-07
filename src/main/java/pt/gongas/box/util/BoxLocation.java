@@ -12,7 +12,7 @@ public record BoxLocation(double x, double y, double z, float yaw, float pitch) 
             return null;
         }
 
-        return location.x() + "," + location.y() + "," + location.z() + "," + location.yaw + "," + location.pitch;
+        return location.x() + "," + location.y() + "," + location.z() + "," + location.yaw() + "," + location.pitch();
     }
 
     public static BoxLocation deserialize(String data) throws IllegalArgumentException {
@@ -24,7 +24,7 @@ public record BoxLocation(double x, double y, double z, float yaw, float pitch) 
         String[] parts = data.split(",");
 
         if (parts.length != 5) {
-            throw new IllegalArgumentException("Invalid data format: expected 3 values");
+            throw new IllegalArgumentException("Invalid data format: expected 5 values");
         }
 
         try {

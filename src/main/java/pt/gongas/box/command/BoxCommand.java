@@ -5,10 +5,8 @@ import co.aikar.commands.CommandHelp;
 import co.aikar.commands.annotation.*;
 import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 import pt.gongas.box.BoxPlugin;
 import pt.gongas.box.inventory.BoxInventory;
 import pt.gongas.box.manager.BoxManager;
@@ -43,7 +41,7 @@ public class BoxCommand extends BaseCommand {
     @Description("Opens the Box Main Menu")
     public void mainMenu(Player player) {
 
-        Box box = boxService.getBoxByOwnerUuid(player.getUniqueId());
+        Box box = boxService.get(player.getUniqueId());
 
         if (box == null) {
             player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("wait", "<red>Wait...")));
@@ -65,17 +63,9 @@ public class BoxCommand extends BaseCommand {
     public void teleport(Player player) {
 
         UUID playerUuid = player.getUniqueId();
-        Box box = boxService.getBoxByOwnerUuid(playerUuid);
+        Box box = boxService.get(playerUuid);
 
         if (box == null) {
-
-            Bukkit.getAsyncScheduler().runNow(plugin, task -> {
-
-                UUID boxUuid = BoxPlugin.ownerToBox.get(playerUuid);
-                BoxPlugin.boxServers.get(boxUuid);
-
-            });
-
             player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("wait", "<red>Wait...")));
             return;
         }
@@ -87,14 +77,14 @@ public class BoxCommand extends BaseCommand {
             return;
         }
 
-        boxManager.teleport(player, box, slimeWorldInstance);
+        boxManager.teleport(player, box, slimeWorldInstance.getBukkitWorld(), true);
     }
 
     @Subcommand("rename")
     @Description("Rename your box")
     public void rename(Player player, String newName) {
 
-        Box box = boxService.getBoxByOwnerUuid(player.getUniqueId());
+        Box box = boxService.get(player.getUniqueId());
 
         if (box == null) {
             player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("need-stay-box", "<red>Teleport to your box (/box tp) and type the command again.")));
@@ -117,7 +107,7 @@ public class BoxCommand extends BaseCommand {
     @CommandCompletion("@players")
     public void addFriends(Player player, String target) {
 
-        Box box = boxService.getBoxByOwnerUuid(player.getUniqueId());
+        Box box = boxService.get(player.getUniqueId());
 
         if (box == null) {
             player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("wait", "<red>Wait...")));
@@ -140,7 +130,7 @@ public class BoxCommand extends BaseCommand {
     @CommandCompletion("@players")
     public void removeFriends(Player player, String target) {
 
-        Box box = boxService.getBoxByOwnerUuid(player.getUniqueId());
+        Box box = boxService.get(player.getUniqueId());
 
         if (box == null) {
             player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("wait", "<red>Wait...")));

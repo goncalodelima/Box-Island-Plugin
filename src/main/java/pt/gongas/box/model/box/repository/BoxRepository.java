@@ -36,8 +36,7 @@ public class BoxRepository implements BoxFoundationRepository {
             executor
                     .query("""
                                 CREATE TABLE IF NOT EXISTS box (
-                                    boxUuid BINARY(16) PRIMARY KEY,
-                                    ownerUuid BINARY(16),
+                                    ownerUuid BINARY(16) PRIMARY KEY,
                                     boxName VARCHAR(32),
                                     ownerName VARCHAR(32),
                                     centerLocation VARCHAR(255),
@@ -50,12 +49,12 @@ public class BoxRepository implements BoxFoundationRepository {
 
             executor.query("""
                     CREATE TABLE IF NOT EXISTS box_members (
-                        boxUuid BINARY(16),
+                        ownerUuid BINARY(16),
                         memberUuid BINARY(16),
                         memberName VARCHAR(32),
                         position INT,
-                        PRIMARY KEY (boxUuid, memberUuid),
-                        FOREIGN KEY (boxUuid) REFERENCES box(boxUuid) ON DELETE CASCADE
+                        PRIMARY KEY (ownerUuid, memberUuid),
+                        FOREIGN KEY (ownerUuid) REFERENCES box(ownerUuid) ON DELETE CASCADE
                     )
                     """).write();
 
@@ -65,7 +64,6 @@ public class BoxRepository implements BoxFoundationRepository {
     @Override
     public boolean insertOrUpdateSync(Box box) {
 
-        UUID boxUuid = box.getBoxUuid();
         UUID ownerUuid = box.getOwnerUuid();
         String boxName = box.getBoxName();
         String ownerName = box.getOwnerName();
@@ -79,10 +77,9 @@ public class BoxRepository implements BoxFoundationRepository {
             executor
                     .query("""
                                 INSERT INTO box
-                                (boxUuid, ownerUuid, boxName, ownerName, centerLocation, level, firstTime, lastTime)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                (ownerUuid, boxName, ownerName, centerLocation, level, firstTime, lastTime)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
                                 ON DUPLICATE KEY UPDATE
-                                    ownerUuid = VALUES(ownerUuid),
                                     boxName = VALUES(boxName),
                                     ownerName = VALUES(ownerName),
                                     centerLocation = VALUES(centerLocation),
@@ -91,14 +88,13 @@ public class BoxRepository implements BoxFoundationRepository {
                                     lastTime = VALUES(lastTime)
                             """)
                     .write(statement -> {
-                        statement.set(1, UUIDConverter.convert(boxUuid));
-                        statement.set(2, UUIDConverter.convert(ownerUuid));
-                        statement.set(3, boxName);
-                        statement.set(4, ownerName);
-                        statement.set(5, centerLocation);
-                        statement.set(6, level);
-                        statement.set(7, firstTime);
-                        statement.set(8, lastTime);
+                        statement.set(1, UUIDConverter.convert(ownerUuid));
+                        statement.set(2, boxName);
+                        statement.set(3, ownerName);
+                        statement.set(4, centerLocation);
+                        statement.set(5, level);
+                        statement.set(6, firstTime);
+                        statement.set(7, lastTime);
                     });
 
             return true;
@@ -112,7 +108,6 @@ public class BoxRepository implements BoxFoundationRepository {
     @Override
     public CompletableFuture<Boolean> insertOrUpdate(Box box) {
 
-        UUID boxUuid = box.getBoxUuid();
         UUID ownerUuid = box.getOwnerUuid();
         String boxName = box.getBoxName();
         String ownerName = box.getOwnerName();
@@ -127,10 +122,9 @@ public class BoxRepository implements BoxFoundationRepository {
                 executor
                         .query("""
                                     INSERT INTO box
-                                    (boxUuid, ownerUuid, boxName, ownerName, centerLocation, level, firstTime, lastTime)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                    (ownerUuid, boxName, ownerName, centerLocation, level, firstTime, lastTime)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
                                     ON DUPLICATE KEY UPDATE
-                                        ownerUuid = VALUES(ownerUuid),
                                         boxName = VALUES(boxName),
                                         ownerName = VALUES(ownerName),
                                         centerLocation = VALUES(centerLocation),
@@ -139,14 +133,13 @@ public class BoxRepository implements BoxFoundationRepository {
                                         lastTime = VALUES(lastTime)
                                 """)
                         .write(statement -> {
-                            statement.set(1, UUIDConverter.convert(boxUuid));
-                            statement.set(2, UUIDConverter.convert(ownerUuid));
-                            statement.set(3, boxName);
-                            statement.set(4, ownerName);
-                            statement.set(5, centerLocation);
-                            statement.set(6, level);
-                            statement.set(7, firstTime);
-                            statement.set(8, lastTime);
+                            statement.set(1, UUIDConverter.convert(ownerUuid));
+                            statement.set(2, boxName);
+                            statement.set(3, ownerName);
+                            statement.set(4, centerLocation);
+                            statement.set(5, level);
+                            statement.set(6, firstTime);
+                            statement.set(7, lastTime);
                         });
 
                 return true;
@@ -158,23 +151,23 @@ public class BoxRepository implements BoxFoundationRepository {
     }
 
     @Override
-    public CompletableFuture<Result<Box>> findOne(UUID boxUuid) {
+    public CompletableFuture<Result<Box>> findOne(UUID ownerUuid) {
 
         return CompletableFuture.supplyAsync(() -> {
 
             try (DatabaseExecutor executor = database.execute()) {
 
-                byte[] bytes = UUIDConverter.convert(boxUuid);
+                byte[] bytes = UUIDConverter.convert(ownerUuid);
 
                 Box box = executor
-                        .query("SELECT * FROM box WHERE boxUuid = ?")
+                        .query("SELECT * FROM box WHERE ownerUuid = ?")
                         .readOne(statement -> statement.set(1, bytes), adapter)
                         .orElse(null);
 
                 if (box != null) {
 
                     executor
-                            .query("SELECT * FROM box_members WHERE boxUuid = ?")
+                            .query("SELECT * FROM box_members WHERE ownerUuid = ?")
                             .readMany(statement -> statement.set(1, bytes), query -> {
 
                                 UUID memberUuid = UUIDConverter.convert((byte[]) query.get("memberUuid"));
@@ -202,10 +195,9 @@ public class BoxRepository implements BoxFoundationRepository {
         try (DatabaseExecutor executor = database.execute()) {
             executor.query("""
                             INSERT INTO box
-                            (boxUuid, ownerUuid, boxName, ownerName, centerLocation, level, firstTime, lastTime)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            (ownerUuid, boxName, ownerName, centerLocation, level, firstTime, lastTime)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                             ON DUPLICATE KEY UPDATE
-                                ownerUuid      = COALESCE(VALUES(ownerUuid), ownerUuid),
                                 boxName        = COALESCE(VALUES(boxName), boxName),
                                 ownerName      = COALESCE(VALUES(ownerName), ownerName),
                                 centerLocation = VALUES(centerLocation),
@@ -216,14 +208,13 @@ public class BoxRepository implements BoxFoundationRepository {
                     .batch(boxes.entrySet(), (entry, statement) -> {
                         Box box = entry.getKey();
                         BoxData data = entry.getValue();
-                        statement.set(1, UUIDConverter.convert(box.getBoxUuid()));
-                        statement.set(2, UUIDConverter.convert(box.getOwnerUuid()));
-                        statement.set(3, data.boxName());
-                        statement.set(4, data.ownerName());
-                        statement.set(5, data.centerLocation());
-                        statement.set(6, data.level());
-                        statement.set(7, data.firstTime());
-                        statement.set(8, data.lastTime());
+                        statement.set(1, UUIDConverter.convert(box.getOwnerUuid()));
+                        statement.set(2, data.boxName());
+                        statement.set(3, data.ownerName());
+                        statement.set(4, data.centerLocation());
+                        statement.set(5, data.level());
+                        statement.set(6, data.firstTime());
+                        statement.set(7, data.lastTime());
                     });
 
             return true;
@@ -239,13 +230,13 @@ public class BoxRepository implements BoxFoundationRepository {
         return CompletableFuture.supplyAsync(() -> {
             try (DatabaseExecutor executor = database.execute()) {
                 executor.query("""
-                        INSERT INTO box_members (boxUuid, memberUuid, memberName, position)
+                        INSERT INTO box_members (ownerUuid, memberUuid, memberName, position)
                         VALUES (?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE
                             memberName = VALUES(memberName),
                             position = VALUES(position)
                         """).write(statement -> {
-                    statement.set(1, UUIDConverter.convert(box.getBoxUuid()));
+                    statement.set(1, UUIDConverter.convert(box.getOwnerUuid()));
                     statement.set(2, UUIDConverter.convert(memberUuid));
                     statement.set(3, memberName);
                     statement.set(4, position);
@@ -263,9 +254,9 @@ public class BoxRepository implements BoxFoundationRepository {
     public CompletableFuture<Boolean> removeMember(Box box, UUID memberUuid) {
         return CompletableFuture.supplyAsync(() -> {
             try (DatabaseExecutor executor = database.execute()) {
-                executor.query("DELETE FROM box_members WHERE boxUuid = ? AND memberUuid = ?")
+                executor.query("DELETE FROM box_members WHERE ownerUuid = ? AND memberUuid = ?")
                         .write(statement -> {
-                            statement.set(1, UUIDConverter.convert(box.getBoxUuid()));
+                            statement.set(1, UUIDConverter.convert(box.getOwnerUuid()));
                             statement.set(2, UUIDConverter.convert(memberUuid));
                         });
 

@@ -39,7 +39,7 @@ public class BoxUpgradeCommand extends BaseCommand {
             return;
         }
 
-        Box box = boxService.getBoxByOwnerUuid(player.getUniqueId());
+        Box box = boxService.get(player.getUniqueId());
 
         if (box == null) {
             player.sendMessage(MiniMessage.miniMessage().deserialize(lang.getString("wait", "<red>Wait...")));

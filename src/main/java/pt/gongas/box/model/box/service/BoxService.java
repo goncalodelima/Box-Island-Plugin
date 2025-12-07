@@ -36,31 +36,26 @@ public class BoxService implements BoxFoundationService {
 
     private final BoxFoundationRepository boxRepository;
 
-    private final Database database;
-
     private final Map<UUID, Box> cache = new HashMap<>();
 
     private final Map<Box, BoxData> pendingUpdates = new ConcurrentHashMap<>();
 
-    private final Map<UUID, Box> boxByOwnerUuid = new ConcurrentHashMap<>();
-
     public BoxService(BoxPlugin plugin, Database database) {
         this.plugin = plugin;
-        this.database = database;
         boxRepository = new BoxRepository(plugin, database);
         boxRepository.setup();
     }
 
     @Override
-    public CompletableFuture<Box> createBox(UUID playerUuid, String playerName, UUID boxUuid, UUID ownerUuid, boolean visitBetweenServers) {
+    public CompletableFuture<Box> createBox(UUID playerUuid, String playerName, UUID ownerUuid, boolean visitBetweenServers) {
 
-        Box verify = get(boxUuid);
+        Box verify = get(ownerUuid);
 
         if (verify == null) {
 
             BoxLevel boxLevel = BoxPlugin.boxLevelService.get(0);
 
-            return boxRepository.findOne(boxUuid).thenComposeAsync(result -> {
+            return boxRepository.findOne(ownerUuid).thenComposeAsync(result -> {
 
                         boolean needUpdateDate;
 
@@ -69,7 +64,7 @@ public class BoxService implements BoxFoundationService {
                             Box value = result.value();
                             Box box = Objects.requireNonNullElseGet(value, () -> {
                                 String now = plugin.getDateFormat().format(new Date());
-                                return new Box(boxUuid, ownerUuid, playerName, boxLevel, now, now);
+                                return new Box(ownerUuid, playerName, boxLevel, now, now);
                             });
 
                             if (value == null) {
@@ -85,21 +80,21 @@ public class BoxService implements BoxFoundationService {
                                 needUpdateDate = true;
                             }
 
-                            return CompletableFuture.supplyAsync(() -> loadOrCreateWorld(box, boxUuid, needUpdateDate), plugin.getWorldExecutor());
+                            return CompletableFuture.supplyAsync(() -> loadOrCreateWorld(box, ownerUuid, needUpdateDate), plugin.getWorldExecutor());
 
                         } else {
                             return CompletableFuture.failedFuture(new IllegalStateException(result.errorMessage()));
                         }
 
-                    }, plugin.getDatabaseExecutor()).thenApplyAsync(triple -> initializeWorld(boxUuid, triple.first(), triple.second(), triple.first().getBoxLevel(), visitBetweenServers, playerUuid, triple.third()), plugin.getBukkitMainThreadExecutor())
+                    }, plugin.getDatabaseExecutor()).thenApplyAsync(triple -> initializeWorld(ownerUuid, triple.first(), triple.second(), triple.first().getBoxLevel(), visitBetweenServers, playerUuid, triple.third()), Bukkit.getScheduler().getMainThreadExecutor(plugin))
                     .exceptionally(e -> null);
 
         } else {
 
-            return CompletableFuture.supplyAsync(() -> loadOrCreateWorld(verify, boxUuid, true), plugin.getWorldExecutor())
-                    .thenApplyAsync(triple -> initializeWorld(boxUuid, verify, triple.second(), triple.first().getBoxLevel(), visitBetweenServers, playerUuid, triple.third()), plugin.getBukkitMainThreadExecutor())
+            return CompletableFuture.supplyAsync(() -> loadOrCreateWorld(verify, ownerUuid, true), plugin.getWorldExecutor())
+                    .thenApplyAsync(triple -> initializeWorld(ownerUuid, verify, triple.second(), triple.first().getBoxLevel(), visitBetweenServers, playerUuid, triple.third()), Bukkit.getScheduler().getMainThreadExecutor(plugin))
                     .exceptionally(e -> {
-                        plugin.getLogger().log(Level.WARNING, "Failed to create world for player UUID: " + boxUuid, e.getCause() != null ? e.getCause() : e);
+                        plugin.getLogger().log(Level.WARNING, "Failed to create world for player UUID: " + ownerUuid, e.getCause() != null ? e.getCause() : e);
                         return null;
                     });
 
@@ -108,13 +103,8 @@ public class BoxService implements BoxFoundationService {
     }
 
     @Override
-    public Box get(UUID boxUuid) {
-        return cache.get(boxUuid);
-    }
-
-    @Override
-    public Box getBoxByOwnerUuid(UUID ownerUuid) {
-        return boxByOwnerUuid.get(ownerUuid);
+    public Box get(UUID ownerUuid) {
+        return cache.get(ownerUuid);
     }
 
     @Override
@@ -152,9 +142,9 @@ public class BoxService implements BoxFoundationService {
         return cache;
     }
 
-    private Triple<Box, SlimeWorld, Boolean> loadOrCreateWorld(Box box, UUID boxUuid, boolean needUpdateDate) {
+    private Triple<Box, SlimeWorld, Boolean> loadOrCreateWorld(Box box, UUID ownerUuid, boolean needUpdateDate) {
 
-        String uuidString = boxUuid.toString();
+        String uuidString = ownerUuid.toString();
 
         try {
             SlimeWorld slimeWorld = BoxPlugin.advancedSlimePaperAPI.getLoadedWorld("template1").clone(uuidString, BoxPlugin.slimeLoader);
@@ -180,13 +170,21 @@ public class BoxService implements BoxFoundationService {
 
     }
 
-    private Box initializeWorld(UUID boxUuid, Box box, SlimeWorld slimeWorld, BoxLevel boxLevel, boolean visitBetweenServers, UUID playerUuid, boolean needUpdateDate) {
+    private Box initializeWorld(UUID ownerUuid, Box box, SlimeWorld slimeWorld, BoxLevel boxLevel, boolean visitBetweenServers, UUID playerUuid, boolean needUpdateDate) {
 
-        SlimeWorldInstance slimeWorldInstance = BoxPlugin.advancedSlimePaperAPI.getLoadedWorld(boxUuid.toString());
+        System.out.println("initializeWorld 0");
+
+        long current = System.currentTimeMillis();
+
+        SlimeWorldInstance slimeWorldInstance = BoxPlugin.advancedSlimePaperAPI.getLoadedWorld(ownerUuid.toString());
 
         if (slimeWorldInstance == null) {
+            System.out.println("initializeWorld 1");
             slimeWorldInstance = BoxPlugin.advancedSlimePaperAPI.loadWorld(slimeWorld, true);
+            System.out.println("difference 1: " + (System.currentTimeMillis() - current));
         }
+
+        System.out.println("initializeWorld 2");
 
         World world = slimeWorldInstance.getBukkitWorld();
         Location location = world.getSpawnLocation();
@@ -195,54 +193,49 @@ public class BoxService implements BoxFoundationService {
         border.setSize(boxLevel.size());
 
         if (box.getCenterBoxLocation() == null) {
+            System.out.println("set centerbox here 3");
             box.setCenterBoxLocation(new BoxLocation(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch()));
             box.setWorld(world);
         }
 
-//        if (boxLocation == null) {
-//            box.setCenterBoxLocation(new BoxLocation(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch()));
-//            player.teleport(location);
-//        } else {
-//            player.teleport(new Location(location.getWorld(), boxLocation.x(), boxLocation.y(), boxLocation.z()));
-//        }
-
-        cache.put(box.getBoxUuid(), box);
-        boxByOwnerUuid.put(box.getOwnerUuid(), box);
+        cache.put(box.getOwnerUuid(), box);
 
         String now;
 
         if (needUpdateDate) {
             now = plugin.getDateFormat().format(new Date());
             box.setLastTime(now);
-            pendingUpdates.merge(box, BoxData.withLastTime(now), BoxData::merge);
+            pendingUpdates.merge(box, BoxData.withLastTime(now), (boxData, boxData2) -> boxData.merge(boxData2));
         } else {
             now = null;
         }
 
-        Bukkit.getAsyncScheduler().runNow(plugin, task -> {
+        BoxPlugin.plugin.getRedisExecutor().submit(() -> {
 
-            BoxPlugin.boxServers.put(box.getBoxUuid(), BoxPlugin.serverId);
-            BoxPlugin.ownerToBox.put(box.getOwnerUuid(), box.getBoxUuid());
-            BoxPlugin.boxToOwner.put(box.getBoxUuid(), box.getOwnerUuid());
+            BoxPlugin.boxServers.put(box.getOwnerUuid(), BoxPlugin.serverId);
 
             if (!visitBetweenServers) {
-                BoxPlugin.serverReservations.remove(boxUuid);
+                System.out.println("remove 0");
+                BoxPlugin.serverReservations.remove(ownerUuid);
             } else {
+                System.out.println("remove 1");
                 BoxPlugin.boxUuidByPlayerUuid.remove(playerUuid);
             }
 
             if (needUpdateDate) {
-                updateBoxDateToFriends(playerUuid, box.getBoxUuid(), now);
+                updateBoxDateToFriends(playerUuid, box.getOwnerUuid(), now);
             }
 
         });
 
+        System.out.println("difference 2: " + (System.currentTimeMillis() - current));
+
         return box;
     }
 
-    private void updateBoxDateToFriends(UUID playerUuid, UUID boxUuid, String now) {
+    private void updateBoxDateToFriends(UUID playerUuid, UUID ownerUuid, String now) {
 
-        Set<UUID> uuids = findPlayersWithBoxUuid(boxUuid);
+        Set<UUID> uuids = findPlayersWithOwnerUuid(ownerUuid);
 
         uuids.add(playerUuid);
 
@@ -252,7 +245,7 @@ public class BoxService implements BoxFoundationService {
             Object[] target = null;
 
             for (Object[] arr : set) {
-                if (boxUuid.equals(arr[0])) {
+                if (ownerUuid.equals(arr[0])) {
                     target = arr;
                     break;
                 }
@@ -260,7 +253,7 @@ public class BoxService implements BoxFoundationService {
 
             if (target != null) {
                 set.remove(target);
-                target[6] = now;
+                target[5] = now;
                 set.add(target);
             }
 
@@ -269,14 +262,14 @@ public class BoxService implements BoxFoundationService {
     }
 
     @SuppressWarnings("unchecked")
-    private Set<UUID> findPlayersWithBoxUuid(UUID boxUuid) {
+    private Set<UUID> findPlayersWithOwnerUuid(UUID ownerUuid) {
 
         Set<UUID> result = new HashSet<>();
         RSetMultimap<String, Object[]> map = (RSetMultimap<String, Object[]>) (Object) BoxPlugin.boxListByPlayerUuid;
 
         for (Map.Entry<String, Object[]> entry : map.entries()) {
 
-            if (boxUuid.equals(entry.getValue()[0])) {
+            if (ownerUuid.equals(entry.getValue()[0])) {
                 result.add(UUID.fromString(entry.getKey()));
             }
 
@@ -284,6 +277,5 @@ public class BoxService implements BoxFoundationService {
 
         return result;
     }
-
 
 }

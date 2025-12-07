@@ -1,12 +1,15 @@
 package pt.gongas.box;
 
-import java.util.List;
 import java.util.UUID;
 
 public class BoxLoader {
 
     public static void addPlayerWorld() {
         BoxPlugin.worldCount.addAndGet(BoxPlugin.serverId, 1);
+    }
+
+    public static void addAsyncPlayerWorld() {
+        BoxPlugin.worldCount.addAndGetAsync(BoxPlugin.serverId, 1);
     }
 
     public static void removeBoxServer(UUID uuid) {

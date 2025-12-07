@@ -1,7 +1,5 @@
 package pt.gongas.box.model.box;
 
-import io.papermc.paper.threadedregions.scheduler.AsyncScheduler;
-import org.bukkit.Bukkit;
 import org.bukkit.World;
 import pt.gongas.box.BoxPlugin;
 import pt.gongas.box.model.level.BoxLevel;
@@ -11,7 +9,6 @@ import java.util.*;
 
 public class Box {
 
-    private final UUID boxUuid;
     private final UUID ownerUuid;
     private String boxName;
     private String ownerName;
@@ -29,27 +26,12 @@ public class Box {
     private World world;
 
     public Box(UUID ownerUuid, String ownerName, BoxLevel boxLevel, String firstTime, String lastTime) {
-        this.boxUuid = UUID.randomUUID();
         this.ownerUuid = ownerUuid;
         this.boxName = ownerName;
         this.ownerName = ownerName;
         this.boxLevel = boxLevel;
         this.firstTime = firstTime;
         this.lastTime = lastTime;
-    }
-
-    public Box(UUID boxUuid, UUID ownerUuid, String ownerName, BoxLevel boxLevel, String firstTime, String lastTime) {
-        this.boxUuid = boxUuid;
-        this.ownerUuid = ownerUuid;
-        this.boxName = ownerName;
-        this.ownerName = ownerName;
-        this.boxLevel = boxLevel;
-        this.firstTime = firstTime;
-        this.lastTime = lastTime;
-    }
-
-    public UUID getBoxUuid() {
-        return boxUuid;
     }
 
     public UUID getOwnerUuid() {
@@ -137,13 +119,21 @@ public class Box {
         this.world = world;
     }
 
+    public boolean isOwnerOrMember(UUID playerUuid) {
+        return ownerUuid.equals(playerUuid) || playerNameByUuid.containsKey(playerUuid);
+    }
+
+    public boolean containsPlayer(UUID playerUuid) {
+        return playerNameByUuid.containsKey(playerUuid);
+    }
+
     public void addPlayer(UUID playerUuid, String name, int pos) {
         positionByPlayerUuid.put(playerUuid, pos);
         playerUuidByPosition.put(pos, playerUuid);
         playerNameByLowercaseName.put(name.toLowerCase(), name);
         playerNameByUuid.put(playerUuid, name);
         uuidByPlayerName.put(name, playerUuid);
-        Bukkit.getAsyncScheduler().runNow(BoxPlugin.plugin, (task) -> BoxPlugin.boxListByPlayerUuid.put(playerUuid, new Object[]{boxUuid, ownerUuid, ownerName, boxLevel.level(), playerNameByUuid.size() + 1, firstTime, lastTime}));
+        BoxPlugin.plugin.getRedisExecutor().submit(() -> BoxPlugin.boxListByPlayerUuid.put(playerUuid, new Object[]{ownerUuid, ownerName, boxLevel.level(), playerNameByUuid.size() + 1, firstTime, lastTime}));
     }
 
     public void addPlayer(UUID playerUuid, String name) {
@@ -153,7 +143,7 @@ public class Box {
         playerNameByLowercaseName.put(name.toLowerCase(), name);
         playerNameByUuid.put(playerUuid, name);
         uuidByPlayerName.put(name, playerUuid);
-        Bukkit.getAsyncScheduler().runNow(BoxPlugin.plugin, (task) -> BoxPlugin.boxListByPlayerUuid.put(playerUuid, new Object[]{boxUuid, ownerUuid, ownerName, boxLevel.level(), playerNameByUuid.size() + 1, firstTime, lastTime}));
+        BoxPlugin.plugin.getRedisExecutor().submit(() -> BoxPlugin.boxListByPlayerUuid.put(playerUuid, new Object[]{ownerUuid, ownerName, boxLevel.level(), playerNameByUuid.size() + 1, firstTime, lastTime}));
     }
 
     public void removePlayer(UUID playerUuid) {
@@ -166,7 +156,7 @@ public class Box {
             uuidByPlayerName.remove(realName);
             playerNameByLowercaseName.remove(realName.toLowerCase());
             playerUuidByPosition.remove(pos);
-            Bukkit.getAsyncScheduler().runNow(BoxPlugin.plugin, task -> BoxPlugin.boxListByPlayerUuid.remove(playerUuid, boxUuid));
+            BoxPlugin.plugin.getRedisExecutor().submit(() -> BoxPlugin.boxListByPlayerUuid.remove(playerUuid, ownerUuid));
         }
 
     }
@@ -187,12 +177,12 @@ public class Box {
     @Override
     public boolean equals(Object o) {
         if (!(o instanceof Box box)) return false;
-        return Objects.equals(boxUuid, box.boxUuid);
+        return Objects.equals(ownerUuid, box.ownerUuid);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(boxUuid);
+        return Objects.hashCode(ownerUuid);
     }
 
 }

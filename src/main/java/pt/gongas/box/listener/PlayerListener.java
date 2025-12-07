@@ -1,23 +1,26 @@
 package pt.gongas.box.listener;
 
-import org.bukkit.Location;
+import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.redisson.api.RFuture;
+import org.bukkit.scheduler.BukkitRunnable;
 import pt.gongas.box.BoxPlugin;
+import pt.gongas.box.manager.BoxManager;
 import pt.gongas.box.model.box.Box;
 import pt.gongas.box.model.box.service.BoxFoundationService;
-import pt.gongas.box.util.BoxLocation;
 
 import java.util.UUID;
 
 public class PlayerListener implements Listener {
 
+    private final BoxManager boxManager;
+
     private final BoxFoundationService boxService;
 
-    public PlayerListener(BoxFoundationService boxService) {
+    public PlayerListener(BoxManager boxManager, BoxFoundationService boxService) {
+        this.boxManager = boxManager;
         this.boxService = boxService;
     }
 
@@ -27,50 +30,145 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
         UUID playerUuid = player.getUniqueId();
 
-        RFuture<String> reservedServer = BoxPlugin.serverReservations.getAsync(playerUuid);
+        BoxPlugin.plugin.getRedisExecutor().submit(() -> {
 
-        reservedServer.thenAcceptAsync(value -> {
+           String value = BoxPlugin.boxServers.get(playerUuid);
+
+            System.out.println("A");
+            System.out.println("sv id: " + BoxPlugin.serverId);
+            System.out.println("value: " + value);
 
             if (BoxPlugin.serverId.equals(value)) {
 
-                Box box = boxService.get(playerUuid);
+                System.out.println("B");
 
-                if (box == null) {
-                    return;
-                }
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
 
-                BoxLocation boxLocation = box.getCenterBoxLocation();
-                Location centerLocation = new Location(box.getWorld(), boxLocation.x(), boxLocation.y(), boxLocation.z(), boxLocation.yaw(), boxLocation.pitch());
+                        Box box = boxService.get(playerUuid);
 
-                player.teleport(centerLocation);
+                        if (box == null) {
+                            System.out.println("C");
+                            return;
+                        }
+
+                        SlimeWorldInstance slimeWorldInstance = BoxPlugin.advancedSlimePaperAPI.getLoadedWorld(playerUuid.toString());
+
+                        if (slimeWorldInstance == null) {
+                            System.out.println("D");
+                            return;
+                        }
+
+                        System.out.println("E");
+                        boxManager.teleport(player, box, slimeWorldInstance.getBukkitWorld(), false);
+
+                    }
+                }.runTask(BoxPlugin.plugin);
 
             } else {
+
+                System.out.println("E");
 
                 UUID boxUuid = BoxPlugin.boxUuidByPlayerUuid.get(playerUuid);
 
                 if (boxUuid == null) {
+                    System.out.println("F");
                     return;
                 }
 
-                UUID ownerUuid = BoxPlugin.boxToOwner.get(boxUuid);
+                System.out.println("G");
 
-                if (ownerUuid == null) {
-                    return;
-                }
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
 
-                Box box = boxService.get(boxUuid);
+                        Box box = boxService.get(boxUuid);
 
-                if (box == null) {
-                    return;
-                }
+                        if (box == null) {
+                            System.out.println("J");
+                            return;
+                        }
 
-                BoxLocation boxLocation = box.getCenterBoxLocation();
-                Location centerLocation = new Location(box.getWorld(), boxLocation.x(), boxLocation.y(), boxLocation.z(), boxLocation.yaw(), boxLocation.pitch());
+                        System.out.println("K");
+                        boxManager.teleport(player, box, box.getWorld(), false);
 
-                player.teleport(centerLocation);
+                    }
+                }.runTask(BoxPlugin.plugin);
+
             }
 
         });
+
+//        RFuture<String> reservedServer = BoxPlugin.serverReservations.getAsync(playerUuid);
+//
+//        reservedServer.thenAcceptAsync(value -> {
+//
+//            System.out.println("A");
+//            System.out.println("sv id: " + BoxPlugin.serverId);
+//            System.out.println("value: " + value);
+//
+//            if (BoxPlugin.serverId.equals(value)) {
+//
+//                System.out.println("B");
+//
+//                new BukkitRunnable() {
+//                    @Override
+//                    public void run() {
+//
+//                        Box box = boxService.get(playerUuid);
+//
+//                        if (box == null) {
+//                            System.out.println("C");
+//                            return;
+//                        }
+//
+//                        SlimeWorldInstance slimeWorldInstance = BoxPlugin.advancedSlimePaperAPI.getLoadedWorld(playerUuid.toString());
+//
+//                        if (slimeWorldInstance == null) {
+//                            System.out.println("D");
+//                            return;
+//                        }
+//
+//                        System.out.println("E");
+//                        boxManager.teleport(player, box, slimeWorldInstance.getBukkitWorld(), false);
+//
+//                    }
+//                }.runTask(BoxPlugin.plugin);
+//
+//            } else {
+//
+//                System.out.println("E");
+//
+//                UUID boxUuid = BoxPlugin.boxUuidByPlayerUuid.get(playerUuid);
+//
+//                if (boxUuid == null) {
+//                    System.out.println("F");
+//                    return;
+//                }
+//
+//                System.out.println("G");
+//
+//                new BukkitRunnable() {
+//                    @Override
+//                    public void run() {
+//
+//                        Box box = boxService.get(boxUuid);
+//
+//                        if (box == null) {
+//                            System.out.println("J");
+//                            return;
+//                        }
+//
+//                        System.out.println("K");
+//                        boxManager.teleport(player, box, box.getWorld(), false);
+//
+//                    }
+//                }.runTask(BoxPlugin.plugin);
+//
+//            }
+//
+//        });
 
     }
 

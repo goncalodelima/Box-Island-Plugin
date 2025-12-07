@@ -144,7 +144,7 @@ public class BoxInventory {
                         return;
                     }
 
-                    boxManager.teleport(player, box, slimeWorldInstance);
+                    boxManager.teleport(player, box, slimeWorldInstance.getBukkitWorld(), true);
                 }));
 
         List<String> addedLore = inventory.getStringList("main.added.lore");

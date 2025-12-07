@@ -15,7 +15,6 @@ public class BoxAdapter implements DatabaseAdapter<Box> {
     @Override
     public Box adapt(DatabaseQuery query) {
 
-        UUID boxUuid = UUIDConverter.convert((byte[]) query.get("boxUuid"));
         UUID ownerUuid = UUIDConverter.convert((byte[]) query.get("ownerUuid"));
         String boxName = (String) query.get("boxName");
         String ownerName = (String) query.get("ownerName");
@@ -33,10 +32,11 @@ public class BoxAdapter implements DatabaseAdapter<Box> {
 
         BoxLevel boxLevel = BoxPlugin.boxLevelService.get(level);
 
-        Box box = new Box(boxUuid, ownerUuid, ownerName, boxLevel, firstTime, lastTime);
+        Box box = new Box(ownerUuid, ownerName, boxLevel, firstTime, lastTime);
         box.setBoxName(boxName);
 
         if (centerLocation != null) {
+            System.out.println("set centerbox here 2");
             box.setCenterBoxLocation(centerLocation);
         }
 

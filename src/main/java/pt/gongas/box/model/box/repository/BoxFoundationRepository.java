@@ -16,7 +16,7 @@ public interface BoxFoundationRepository {
 
     CompletableFuture<Boolean> insertOrUpdate(Box box);
 
-    CompletableFuture<Result<Box>> findOne(UUID boxUuid);
+    CompletableFuture<Result<Box>> findOne(UUID ownerUuid);
 
     boolean update(Map<Box, BoxData> boxes);
 

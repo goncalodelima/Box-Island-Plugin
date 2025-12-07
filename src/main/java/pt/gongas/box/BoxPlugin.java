@@ -28,6 +28,7 @@ import pt.gongas.box.inventory.BoxInventory;
 import pt.gongas.box.inventory.BoxUpgradeInventory;
 import pt.gongas.box.inventory.BoxVisitInventory;
 import pt.gongas.box.listener.ChatListener;
+import pt.gongas.box.listener.PermissionListener;
 import pt.gongas.box.listener.PlayerListener;
 import pt.gongas.box.loadbalancing.redirect.RedirectManager;
 import pt.gongas.box.manager.BoxManager;
@@ -41,7 +42,6 @@ import pt.gongas.box.model.box.service.BoxFoundationService;
 import pt.gongas.box.model.box.service.BoxService;
 import pt.gongas.box.runnable.BoxRunnable;
 import pt.gongas.box.runnable.UpdateRunnable;
-import pt.gongas.box.util.BukkitMainThreadExecutor;
 import pt.gongas.box.util.Formatter;
 import pt.gongas.box.util.config.Configuration;
 import pt.gongas.redis.redis.RedisManager;
@@ -84,8 +84,6 @@ public class BoxPlugin extends JavaPlugin {
 
     public static World boxWorld;
 
-    private BukkitMainThreadExecutor bukkitMainThreadExecutor;
-
     public static AdvancedSlimePaperAPI advancedSlimePaperAPI;
 
     public static SlimeLoader slimeLoader;
@@ -95,10 +93,6 @@ public class BoxPlugin extends JavaPlugin {
     public static Formatter formatter;
 
     public static RMap<String, Integer> worldCount; // put/remove on the Box server instance
-
-    public static RMap<UUID, UUID> ownerToBox; // put/remove on the Box server instance
-
-    public static RMap<UUID, UUID> boxToOwner; // put/remove on the Box server instance
 
     public static RMap<UUID, String> boxServers; // put/remove on the Box server instance
 
@@ -122,9 +116,13 @@ public class BoxPlugin extends JavaPlugin {
 
     private ExecutorService databaseExecutor;
 
+    private ScheduledExecutorService redisExecutor;
+
     private ScheduledExecutorService updateExecutor;
 
     private DateFormat dateFormat;
+
+    public static int UNLOAD_WORLD_COOLDOWN = 20 * 60;
 
     public static BoxPlugin plugin;
 
@@ -158,8 +156,6 @@ public class BoxPlugin extends JavaPlugin {
         dateFormat = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 
         worldCount = RedisManager.getClient().getMap("server:world-count");
-        ownerToBox = RedisManager.getClient().getMap("server:owner-box");
-        boxToOwner = RedisManager.getClient().getMap("server:box-owner");
         boxServers = RedisManager.getClient().getMap("server:box-servers", StringCodec.INSTANCE);
         boxUuidByPlayerUuid = RedisManager.getClient().getMapCache("player_uuid_to_box_uuid", StringCodec.INSTANCE);
         serverReservations = RedisManager.getClient().getMapCache("server:reservations", StringCodec.INSTANCE);
@@ -169,9 +165,9 @@ public class BoxPlugin extends JavaPlugin {
         boxEvents = RedisManager.getClient().getTopic("box-events", StringCodec.INSTANCE);
         boxListByPlayerUuid = RedisManager.getClient().getSetMultimap("box_list_to_uuid");
 
-        bukkitMainThreadExecutor = new BukkitMainThreadExecutor(this);
         worldExecutor = Executors.newFixedThreadPool(4);
-        databaseExecutor = Executors.newCachedThreadPool();
+        databaseExecutor = Executors.newFixedThreadPool(10);
+        redisExecutor = Executors.newSingleThreadScheduledExecutor();
         updateExecutor = Executors.newSingleThreadScheduledExecutor();
 
         boxWorld = Bukkit.getWorld("world");
@@ -207,7 +203,7 @@ public class BoxPlugin extends JavaPlugin {
 
         new RedirectManager(servers).setup();
 
-        new BoxRunnable(this).runTaskTimer(this, 20 * 60, 20 * 60);
+        new BoxRunnable(this).runTaskTimer(this, UNLOAD_WORLD_COOLDOWN, UNLOAD_WORLD_COOLDOWN);
         new UpdateRunnable(boxService, updateExecutor).start();
 
         register();
@@ -221,47 +217,41 @@ public class BoxPlugin extends JavaPlugin {
                 UUID playerUuid = UUID.fromString(parts[1]);
                 String playerName = parts[2];
 
-                RFuture<String> reservedServer = BoxPlugin.serverReservations.getAsync(playerUuid);
+                RFuture<String> reservedServer = serverReservations.getAsync(playerUuid);
 
                 reservedServer.thenAcceptAsync(value -> {
 
-                    if (BoxPlugin.serverId.equals(value)) {
+                    if (serverId.equals(value)) {
 
-                        boxService.createBox(playerUuid, playerName, playerUuid, playerUuid, false).thenAccept(box -> {
+                        boxService.createBox(playerUuid, playerName, playerUuid, false).thenAcceptAsync(box -> {
 
                             if (box != null) {
                                 BoxLoader.addPlayerWorld(); // this executes before serverReservations timeout in 99% of cases
-                                boxEvents.publishAsync("boxCreated;success;" + serverId + ";" + playerUuid);
+                                boxEvents.publish("boxCreated;success;" + serverId + ";" + playerUuid);
                             } else {
-                                boxEvents.publishAsync("boxCreated;fail;" + serverId + ";" + playerUuid);
+                                boxEvents.publish("boxCreated;fail;" + serverId + ";" + playerUuid);
                             }
 
-                        });
+                        }, redisExecutor);
 
                     } else {
 
-                        UUID boxUuid = BoxPlugin.boxUuidByPlayerUuid.get(playerUuid);
+                        UUID boxUuid = boxUuidByPlayerUuid.get(playerUuid);
 
                         if (boxUuid == null) {
                             return;
                         }
 
-                        UUID ownerUuid = BoxPlugin.boxToOwner.get(boxUuid);
-
-                        if (ownerUuid == null) {
-                            return;
-                        }
-
-                        boxService.createBox(playerUuid, playerName, boxUuid, ownerUuid, true).thenAccept(box -> {
+                        boxService.createBox(playerUuid, playerName, boxUuid, true).thenAcceptAsync(box -> {
 
                             if (box != null) {
                                 BoxLoader.addPlayerWorld(); // this executes before serverReservations timeout in 99% of cases
-                                boxEvents.publishAsync("boxCreated;success;" + serverId + ";" + playerUuid);
+                                boxEvents.publish("boxCreated;success;" + serverId + ";" + playerUuid);
                             } else {
-                                boxEvents.publishAsync("boxCreated;fail;" + serverId + ";" + playerUuid);
+                                boxEvents.publish("boxCreated;fail;" + serverId + ";" + playerUuid);
                             }
 
-                        });
+                        }, redisExecutor);
 
                     }
 
@@ -285,7 +275,7 @@ public class BoxPlugin extends JavaPlugin {
                             box.addPlayer(playerUuid, name);
                             boxManager.attemptInviteMember(box, playerUuid, name);
 
-                            boxEvents.publish("validInvite;" + playerUuid + ";" + parts[4]);
+                            boxEvents.publishAsync("validInvite;" + playerUuid + ";" + parts[4]);
 
                         }
 
@@ -302,20 +292,39 @@ public class BoxPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
 
-        for (SlimeWorldInstance world : BoxPlugin.advancedSlimePaperAPI.getLoadedWorlds()) {
+        for (SlimeWorldInstance world : advancedSlimePaperAPI.getLoadedWorlds()) {
 
             try {
 
                 UUID uuid = UUID.fromString(world.getName());
 
                 Bukkit.unloadWorld(world.getBukkitWorld(), false);
-                BoxPlugin.slimeLoader.deleteWorld(uuid.toString());
+                slimeLoader.deleteWorld(uuid.toString());
 
             } catch (IllegalArgumentException | UnknownWorldException | IOException ignored) {}
 
         }
 
+        redisExecutor.shutdown();
+
+        try {
+            // Wait for currently executing tasks to finish
+            if (!redisExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                // Force shutdown if tasks are not finished in the given time
+                redisExecutor.shutdownNow();
+                // Wait for tasks to respond to being cancelled
+                if (!redisExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    System.err.println("Redis executor did not terminate in the specified time.");
+                }
+            }
+        } catch (InterruptedException ie) {
+            // (Re-)Cancel if current thread also interrupted
+            redisExecutor.shutdownNow();
+        }
+
         clearRedis();
+
+        updateExecutor.shutdown();
 
         try {
             // Wait for currently executing tasks to finish
@@ -404,12 +413,7 @@ public class BoxPlugin extends JavaPlugin {
             Set<UUID> boxUuids = boxes.keySet();
             UUID[] boxUuidsArray = boxUuids.toArray(UUID[]::new);
 
-            Map<UUID, UUID> ownersMap = boxToOwner.getAll(boxUuids);
-            UUID[] ownerUuids = ownersMap.values().toArray(UUID[]::new);
-
             boxUuidToInvitations.fastRemove(boxUuidsArray);
-            ownerToBox.fastRemove(ownerUuids);
-            boxToOwner.fastRemove(boxUuidsArray);
             boxServers.fastRemove(boxUuidsArray);
         }
 
@@ -429,8 +433,9 @@ public class BoxPlugin extends JavaPlugin {
     }
 
     public void registerListener() {
-        getServer().getPluginManager().registerEvents(new PlayerListener(boxService), this);
         getServer().getPluginManager().registerEvents(new ChatListener(this, boxService, boxManager, lang), this);
+        getServer().getPluginManager().registerEvents(new PermissionListener(boxService), this);
+        getServer().getPluginManager().registerEvents(new PlayerListener(boxManager, boxService), this);
     }
 
     private boolean setupEconomy() {
@@ -453,12 +458,12 @@ public class BoxPlugin extends JavaPlugin {
         return servers;
     }
 
-    public BukkitMainThreadExecutor getBukkitMainThreadExecutor() {
-        return bukkitMainThreadExecutor;
-    }
-
     public ExecutorService getDatabaseExecutor() {
         return databaseExecutor;
+    }
+
+    public ScheduledExecutorService getRedisExecutor() {
+        return redisExecutor;
     }
 
     public ExecutorService getWorldExecutor() {
